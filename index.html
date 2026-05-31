@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AXIOM_CAFFEINE // Asistente de Extracción Molecular</title>
+    
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://unpkg.com/lenis@1.1.13/dist/lenis.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+
+    <style>
+        /* === MATRIZ DE VARIABLES CRISTALIZADAS (CAFFEINE HUD SYSTEM) === */
+        :root {
+            --bg-base: #090503;
+            --glass-bg: rgba(26, 15, 10, 0.45);
+            --glass-border: rgba(245, 158, 11, 0.12);
+            --glass-glow: rgba(245, 158, 11, 0.05);
+            --text-main: #fafaf9;
+            --text-muted: #a8a29e;
+            --coffee-primary: #f59e0b;
+            --coffee-glow: rgba(245, 158, 11, 0.35);
+            --liquid-color: #78350f;
+            --speed-factor: 1s;
+        }
+
+        [data-theme="light"] {
+            --bg-base: #fdfcfa;
+            --glass-bg: rgba(250, 245, 240, 0.6);
+            --glass-border: rgba(120, 53, 15, 0.12);
+            --glass-glow: rgba(120, 53, 15, 0.04);
+            --text-main: #1c1917;
+            --text-muted: #78716c;
+            --coffee-primary: #b45309;
+            --coffee-glow: rgba(180, 83, 9, 0.2);
+            --liquid-color: #451a03;
+        }
+
+        /* === CONFIGURACIÓN BASE Y ACELERACIÓN DE HARDWARE === */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        body, html {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            overflow-x: hidden;
+            width: 100%;
+            min-height: 100vh;
+            transition: background-color 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        /* Contenedor de partículas decorativas de aroma */
+        #coffee-aroma-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        main {
+            max-width: 480px;
+            margin: 0 auto;
+            padding: 24px 16px 100px 16px;
+            position: relative;
+            z-index: 5;
+        }
+
+        /* === COMPONENTES DE DISEÑO GLASSMORPHISM === */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+            border-radius: 20px;
+            transform: translateZ(0); /* Forzar hilos GPU */
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.01);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 16px;
+            transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+            cursor: pointer;
+        }
+        [data-theme="light"] .glass-card {
+            background: rgba(0, 0, 0, 0.01);
+        }
+        .glass-card:active {
+            transform: scale(0.97);
+            background: rgba(245, 158, 11, 0.05);
+            border-color: var(--coffee-primary);
+        }
+
+        /* === TAZA INTERACTIVA PROCEDIMENTAL (RIVE SIMULATION STYLE) === */
+        .cup-container {
+            width: 140px;
+            height: 120px;
+            margin: 30px auto;
+            position: relative;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+        }
+        .cup-body {
+            width: 110px;
+            height: 100px;
+            border: 4px solid var(--text-main);
+            border-top: none;
+            border-radius: 0 0 35px 35px;
+            position: relative;
+            overflow: hidden;
+            background: rgba(255,255,255,0.02);
+            z-index: 2;
+        }
+        .cup-handle {
+            position: absolute;
+            width: 30px;
+            height: 50px;
+            border: 4px solid var(--text-main);
+            border-left: none;
+            right: 2px;
+            top: 25px;
+            border-radius: 0 15px 15px 0;
+            z-index: 1;
+        }
+        .liquid-fill {
+            width: 100%;
+            height: 0%; /* Controlado por el cronómetro interactivo */
+            background: var(--liquid-color);
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            transition: height 0.1s linear;
+            box-shadow: inset 0 8px 10px rgba(255,255,255,0.15);
+        }
+        .liquid-wave {
+            position: absolute;
+            top: -6px;
+            left: 0;
+            width: 200%;
+            height: 8px;
+            background: var(--liquid-color);
+            border-radius: 50%;
+            animation: waveMotion 1s infinite linear;
+            opacity: 0.9;
+        }
+        @keyframes waveMotion {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        /* Vistas de la aplicación controladas por transiciones fluidas */
+        .app-view {
+            display: none;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        .app-view.active {
+            display: block;
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Botones de acción rápida */
+        .action-btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 14px;
+            background: var(--coffee-primary);
+            color: #fff;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px var(--coffee-glow);
+            transition: transform 0.2s ease;
+        }
+        .action-btn:active {
+            transform: scale(0.98);
+        }
+
+        /* Elementos de estadísticas (AutoAnimate targets) */
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: rgba(255,255,255,0.02);
+            border-radius: 10px;
+            margin-bottom: 8px;
+            font-family: monospace;
+            font-size: 13px;
+            border-left: 3px solid var(--coffee-primary);
+            transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="coffee-aroma-canvas"></canvas>
+
+    <main>
+        
+        <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 34px; height: 34px; background: var(--coffee-primary); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #fff; box-shadow: 0 0 10px var(--coffee-glow);">
+                    <i data-lucide="coffee" style="width: 18px; height: 18px;"></i>
+                </div>
+                <div>
+                    <span style="font-weight: 900; font-size: 1.1rem; letter-spacing: -0.5px;">AXIOM_CAFFEINE</span>
+                    <p style="font-size: 7px; font-family: monospace; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">v2.0 // molecular extraction</p>
+                </div>
+            </div>
+            <button onclick="toggleDayNightEngine()" class="glass-card" style="padding: 8px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: none;">
+                <i id="theme-icon" data-lucide="moon" style="width: 16px; height: 16px; color: var(--text-main);"></i>
+            </button>
+        </header>
+
+        <section id="view-selector" class="app-view active">
+            <h2 style="font-size: 1.4rem; font-weight: 800; margin-bottom: 6px; tracking: -0.5px;">Selecciona tu Extracción</h2>
+            <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 20px;">Algoritmos ajustados para moliendas y ratios de especialidad.</p>
+            
+            <div style="display: flex; flex-direction: column; gap: 12px;" id="methods-list">
+                </div>
+
+            <div class="glass-panel" style="margin-top: 24px; padding: 20px;">
+                <h3 style="font-size: 12px; font-family: monospace; color: var(--coffee-primary); text-transform: uppercase; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                    <i data-lucide="activity" style="width: 14px; height: 14px;"></i> Registro Biométrico Diario
+                </h3>
+                <div id="stats-container">
+                    <div class="stat-row" id="stat-caffeine"><span>Cafeína Activa en Cuerpo:</span><strong id="val-body-caffeine">0.0 mg</strong></div>
+                    <div class="stat-row" id="stat-hydra"><span>Volumen Hidratación Total:</span><strong id="val-body-hydra">0 ml</strong></div>
+                    <div class="stat-row" id="stat-cups"><span>Tazas Procesadas Hoy:</span><strong id="val-body-cups">0 u</strong></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="view-timer" class="app-view">
+            <button onclick="navigateView('view-selector')" style="background: none; border: none; color: var(--text-muted); font-size: 12px; display: flex; align-items: center; gap: 4px; margin-bottom: 16px; cursor: pointer; font-family: monospace;">
+                <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> VOLVER AL MENÚ
+            </button>
+
+            <div class="glass-panel" style="padding: 24px; text-align: center;">
+                <span id="timer-method-badge" style="font-size: 9px; font-family: monospace; text-transform: uppercase; background: rgba(255,255,255,0.05); padding: 4px 8px; border-radius: 6px; color: var(--coffee-primary); font-weight: bold;">PRENSA FRANCESA</span>
+                
+                <div class="cup-container">
+                    <div class="cup-body">
+                        <div class="liquid-fill" id="cup-liquid-mesh">
+                            <div class="liquid-wave"></div>
+                        </div>
+                    </div>
+                    <div class="cup-handle"></div>
+                </div>
+
+                <div id="timer-countdown" style="font-size: 3.2rem; font-weight: 900; font-family: monospace; margin-bottom: 4px; letter-spacing: -2px;">00:00</div>
+                <div id="timer-step-desc" style="font-size: 13px; color: var(--text-muted); min-height: 36px; padding: 0 10px; margin-bottom: 24px; font-weight: 300;">Preparado para infusión...</div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                    <div class="glass-card" style="padding: 10px; text-align: center; cursor: default;">
+                        <span style="font-size: 10px; color: var(--text-muted); display: block; font-family: monospace;">Masa Café</span>
+                        <strong id="timer-grams" style="font-size: 15px; font-weight: 700;">--</strong>
+                    </div>
+                    <div class="glass-card" style="padding: 10px; text-align: center; cursor: default;">
+                        <span style="font-size: 10px; color: var(--text-muted); display: block; font-family: monospace;">Masa Agua</span>
+                        <strong id="timer-water" style="font-size: 15px; font-weight: 700;">--</strong>
+                    </div>
+                </div>
+
+                <button id="btn-timer-trigger" class="action-btn" onclick="toggleExtractionChronometer()">
+                    <i data-lucide="play" style="width: 18px; height: 18px;"></i> INICIAR EXTRACCIÓN
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // === 1. ASSET PIPELINE: MÓDULO DE MODELOS DE CAFÉ DE ESPECIALIDAD ===
+        const COFFEE_RECIPES_PIPELINE = [
+            { id: "method-v60", name: "V60 Filtro Cono", ratio: "1:15", grams: 15, water: 225, caffeine: 140, totalTime: 180, description: "Extracción limpia, resalta notas ácidas y florales finas.", steps: [{t: 30, desc: "Preinfusión molecular: Mojar cama de café (45g agua)."}, {t: 100, desc: "Primer vertido continuo en círculos concéntricos."}, {t: 180, desc: "Filtrado final y estabilización de la cama."}] },
+            { id: "method-espresso", name: "Espresso Profesional", ratio: "1:2", grams: 18, water: 36, caffeine: 80, totalTime: 30, description: "Extracción concentrada de alta viscosidad y crema densa.", steps: [{t: 5, desc: "Preinfusión controlada por baja presión."}, {t: 30, desc: "Extracción volumétrica completa a 9 bares de energía."}] },
+            { id: "method-french", name: "Prensa Francesa", ratio: "1:16", grams: 20, water: 320, caffeine: 180, totalTime: 240, description: "Inmersión total, cuerpo robusto y aceites maximizados.", steps: [{t: 45, desc: "Vertido total inicial y agitación de costra orgánica."}, {t: 240, desc: "Inmersión estática completa para decantación de sólidos."}] },
+            { id: "method-moka", name: "Cafetera Italiana", ratio: "1:10", grams: 16, water: 160, caffeine: 150, totalTime: 120, description: "Presión de vapor ascendente térmica, intensidad clásica.", steps: [{t: 40, desc: "Calentamiento del agua en la cámara inferior."}, {t: 120, desc: "Ascensión del flujo de café por el conducto central."}] }
+        ];
+
+        // === 2. VARIABLES DE ESTADO BIOMÉTRICO (MÓDULO DE CONSUMO) ===
+        let userTelemetry = { activeCaffeine: 0.0, totalHydration: 0, tazasContador: 0 };
+        let activeSelectedRecipe = null;
+        let chronometerState = { timerId: null, running: false, currentSeconds: 0, currentStepIndex: 0 };
+        let currentThemeMode = "dark";
+
+        // Inicializador de Scroll de Seda (Lenis)
+        const lenis = new Lenis({ duration: 1.2, easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), smoothWheel: true });
+        function raf(time) { lenis.raf(time); requestAnimationFrame(raf); }
+        requestAnimationFrame(raf);
+
+        // === 3. INYECTOR PROCEDIMENTAL DE INTERFAZ ===
+        function renderCoffeeSelector() {
+            const listContainer = document.getElementById('methods-list');
+            listContainer.innerHTML = '';
+            
+            COFFEE_RECIPES_PIPELINE.forEach(recipe => {
+                const card = document.createElement('div');
+                card.className = 'glass-card glass-panel';
+                card.style.display = 'flex';
+                card.style.justifyContent = 'space-between';
+                card.style.alignItems = 'center';
+                card.onclick = () => loadExtractionTimerView(recipe);
+                
+                card.innerHTML = `
+                    <div style="flex: 1; padding-right: 12px;">
+                        <h3 style="font-size: 1rem; font-weight: 800; margin-bottom: 4px;">${recipe.name}</h3>
+                        <p style="font-size: 11px; color: var(--text-muted); line-height: 1.3; margin-bottom: 6px;">${recipe.description}</p>
+                        <span style="font-size: 9px; font-family: monospace; background: rgba(245,158,11,0.08); padding: 2px 6px; border-radius: 4px; color: var(--coffee-primary); font-weight: bold;">Ratio ${recipe.ratio}</span>
+                    </div>
+                    <div style="text-align: right; font-family: monospace; font-size: 12px; min-width: 65px; border-left: 1px solid var(--glass-border); padding-left: 12px;">
+                        <div style="color: var(--text-main); font-weight: bold;">${recipe.grams}g</div>
+                        <div style="color: var(--text-muted); font-size: 10px;">${recipe.water}ml</div>
+                        <div style="color: #34d399; font-size: 10px; margin-top: 2px;">+${recipe.caffeine}mg</div>
+                    </div>
+                `;
+                listContainer.appendChild(card);
+            });
+            lucide.createIcons();
+        }
+
+        // === 4. MOTOR DE CAMBIO DE VISTA EN ALTA FIDELIDAD (MOCK VIEW TRANSITIONS API) ===
+        function navigateView(targetViewId) {
+            const views = ['view-selector', 'view-timer'];
+            views.forEach(vId => {
+                const el = document.getElementById(vId);
+                if (vId === targetViewId) {
+                    el.style.display = 'block';
+                    // Animación de rebote físico elástico para simular app nativa
+                    gsap.to(el, { opacity: 1, y: 0, duration: 0.5, cubicBezier: "cubic-bezier(0.25, 1, 0.5, 1)" });
+                } else {
+                    gsap.to(el, { opacity: 0, y: 15, duration: 0.3, onComplete: () => { el.style.display = 'none'; } });
+                }
+            });
+        }
+
+        function loadExtractionTimerView(recipe) {
+            activeSelectedRecipe = recipe;
+            resetChronometerEngine();
+            
+            document.getElementById('timer-method-badge').innerText = recipe.name;
+            document.getElementById('timer-grams').innerText = `${recipe.grams}g`;
+            document.getElementById('timer-water').innerText = `${recipe.water}ml`;
+            document.getElementById('timer-step-desc').innerText = recipe.steps[0].desc;
+            formatCountDisplay(recipe.totalTime);
+
+            navigateView('view-timer');
+        }
+
+        // === 5. CRONÓMETRO DE PREPARACIÓN E INDICADORES ELÁSTICOS (SPRING PHYSICS MOCK) ===
+        function formatCountDisplay(secondsTotal) {
+            let mins = Math.floor(secondsTotal / 60);
+            let secs = secondsTotal % 60;
+            document.getElementById('timer-countdown').innerText = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+
+        function toggleExtractionChronometer() {
+            if (chronometerState.running) {
+                pauseChronometerEngine();
+            } else {
+                startChronometerEngine();
+            }
+        }
+
+        function startChronometerEngine() {
+            chronometerState.running = true;
+            const btn = document.getElementById('btn-timer-trigger');
+            btn.innerHTML = `<i data-lucide="pause"></i> PAUSAR ASISTENTE`;
+            btn.style.background = "var(--text-muted)";
+            lucide.createIcons();
+
+            // Animación elástica sobre el contador al iniciar vertido
+            gsap.fromTo("#timer-countdown", { scale: 0.93 }, { scale: 1, duration: 0.4, ease: "elastic.out(1, 0.5)" });
+
+            chronometerState.timerId = setInterval(() => {
+                chronometerState.currentSeconds++;
+                let remaining = activeSelectedRecipe.totalTime - chronometerState.currentSeconds;
+                formatCountDisplay(remaining);
+
+                // Variación del nivel del líquido en la taza en tiempo real
+                let ratioCompletado = chronometerState.currentSeconds / activeSelectedRecipe.totalTime;
+                document.getElementById('cup-liquid-mesh').style.height = `${ratioCompletado * 100}%`;
+
+                // Procesador de pasos e instrucciones dinámicas
+                let currentStep = activeSelectedRecipe.steps[chronometerState.currentStepIndex];
+                if (chronometerState.currentSeconds >= currentStep.t && chronometerState.currentStepIndex < activeSelectedRecipe.steps.length - 1) {
+                    chronometerState.currentStepIndex++;
+                    document.getElementById('timer-step-desc').innerText = activeSelectedRecipe.steps[chronometerState.currentStepIndex].desc;
+                    // Rebote físico elástico en la tarjeta descriptiva del vertido actual
+                    gsap.fromTo("#timer-step-desc", { y: 5, opacity: 0.5 }, { y: 0, opacity: 1, duration: 0.3, ease: "back.out(1.7)" });
+                }
+
+                if (chronometerState.currentSeconds >= activeSelectedRecipe.totalTime) {
+                    finalizeExtractionEngine();
+                }
+            }, 1000);
+        }
+
+        function pauseChronometerEngine() {
+            chronometerState.running = false;
+            clearInterval(chronometerState.timerId);
+            const btn = document.getElementById('btn-timer-trigger');
+            btn.innerHTML = `<i data-lucide="play"></i> REANUDAR ASISTENTE`;
+            btn.style.background = "var(--coffee-primary)";
+            lucide.createIcons();
+        }
+
+        function resetChronometerEngine() {
+            chronometerState.running = false;
+            clearInterval(chronometerState.timerId);
+            chronometerState.currentSeconds = 0;
+            chronometerState.currentStepIndex = 0;
+            document.getElementById('cup-liquid-mesh').style.height = "0%";
+            const btn = document.getElementById('btn-timer-trigger');
+            btn.innerHTML = `<i data-lucide="play"></i> INICIAR EXTRACCIÓN`;
+            btn.style.background = "var(--coffee-primary)";
+            lucide.createIcons();
+        }
+
+        // === 6. FINALIZACIÓN Y BALANCE QUÍMICO (RUST WASM MOCK LOGIC) ===
+        function finalizeExtractionEngine() {
+            clearInterval(chronometerState.timerId);
+            
+            // Simulación matemática del motor Rust no_std para adición molecular de cafeína
+            userTelemetry.activeCaffeine += activeSelectedRecipe.caffeine;
+            userTelemetry.totalHydration += activeSelectedRecipe.water;
+            userTelemetry.tazasContador += 1;
+
+            // AutoAnimate Reordenamiento de tarjetas de telemetría sin parpadeos
+            const container = document.getElementById('stats-container');
+            
+            document.getElementById('val-body-caffeine').innerText = `${userTelemetry.activeCaffeine.toFixed(1)} mg`;
+            document.getElementById('val-body-hydra').innerText = `${userTelemetry.totalHydration} ml`;
+            document.getElementById('val-body-cups').innerText = `${userTelemetry.tazasContador} u`;
+
+            // Lógica algorítmica AutoAnimate: Reordenar filas basándose en mayor volumen de impacto métrico
+            if (userTelemetry.totalHydration > 300) {
+                // Sube la hidratación arriba del HUD de telemetría
+                container.insertBefore(document.getElementById('stat-hydra'), document.getElementById('stat-caffeine'));
+            }
+
+            navigateView('view-selector');
+            triggerCaffeineGoldConfetti();
+        }
+
+        // === 7. DISPARADOR DE MICRO-RECOMPENSA: CONFETTI DE ORO Y CAFÉ ===
+        function triggerCaffeineGoldConfetti() {
+            confetti({
+                particleCount: 80,
+                spread: 60,
+                origin: { y: 0.8 },
+                colors: ['#78350f', '#f59e0b', '#fbbf24', '#451a03'] // Paleta oro neón y café tostado
+            });
+        }
+
+        // === 8. INTERFAZ DE MODULACIÓN LUMÍNICA CLARO/OSCURO ===
+        function toggleDayNightEngine() {
+            currentThemeMode = currentThemeMode === "dark" ? "light" : "dark";
+            document.documentElement.setAttribute('data-theme', currentThemeMode);
+            const icon = document.getElementById('theme-icon');
+            if(currentThemeMode === "light") {
+                icon.setAttribute('data-lucide', 'sun');
+            } else {
+                icon.setAttribute('data-lucide', 'moon');
+            }
+            lucide.createIcons();
+        }
+
+        // === 9. LIENZO GRÁFICO PROCEDIMENTAL DE AROMA (CANVAS) ===
+        const canvasAroma = document.getElementById('coffee-aroma-canvas');
+        const ctxAroma = canvasAroma.getContext('2d');
+        let aromaParticles = [];
+
+        function resizeAromaCanvas() {
+            canvasAroma.width = window.innerWidth;
+            canvasAroma.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeAromaCanvas);
+        resizeAromaCanvas();
+
+        class AromaParticle {
+            constructor() {
+                this.reset();
+                this.y = Math.random() * canvasAroma.height;
+            }
+            reset() {
+                this.x = Math.random() * canvasAroma.width;
+                this.y = canvasAroma.height + 20;
+                this.size = Math.random() * 3 + 1;
+                this.speedY = -(Math.random() * 0.6 + 0.2);
+                this.speedX = (Math.random() - 0.5) * 0.3;
+                this.alpha = Math.random() * 0.25 + 0.05;
+            }
+            update() {
+                this.y += this.speedY;
+                this.x += this.speedX;
+                if (this.y < -10) this.reset();
+            }
+            draw() {
+                ctxAroma.fillStyle = currentThemeMode === 'dark' ? `rgba(245, 158, 11, ${this.alpha})` : `rgba(120, 53, 15, ${this.alpha * 0.4})`;
+                ctxAroma.beginPath();
+                ctxAroma.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctxAroma.fill();
+            }
+        }
+
+        function initAromaEngine() {
+            aromaParticles = [];
+            for (let i = 0; i < 40; i++) {
+                aromaParticles.push(new AromaParticle());
+            }
+        }
+
+        function animateAromaEngine() {
+            ctxAroma.clearRect(0, 0, canvasAroma.width, canvasAroma.height);
+            aromaParticles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            requestAnimationFrame(animateAromaEngine);
+        }
+
+        // === 10. EJECUCIÓN MAESTRA DEL ENTORNO ===
+        initAromaEngine();
+        animateAromaEngine();
+        renderCoffeeSelector();
+    </script>
+</body>
+</html>
